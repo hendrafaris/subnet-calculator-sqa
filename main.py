@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+import math
 
 app = FastAPI(title="Subnet Calculator API", version="1.0.0")
 
@@ -116,11 +117,16 @@ def hitung_subnet(ip: str, prefix: int) -> dict:
 
     first_octet = (ip_int >> 24) & 0xFF
 
+    net_str = int_to_ip(network_int)
+    bcast_str = int_to_ip(broadcast_int)
+
     return {
         "ip": ip.strip(),
         "prefix": prefix,
-        "network_address": int_to_ip(network_int),
-        "broadcast_address": int_to_ip(broadcast_int),
+        "network": net_str,
+        "network_address": net_str,
+        "broadcast": bcast_str,
+        "broadcast_address": bcast_str,
         "first_host": int_to_ip(first_host_int),
         "last_host": int_to_ip(last_host_int),
         "total_hosts": total_hosts,
@@ -130,6 +136,69 @@ def hitung_subnet(ip: str, prefix: int) -> dict:
         "ip_class": get_ip_class(first_octet),
         "ip_type": get_ip_type(ip_int),
     }
+
+
+def alokasi_vlsm(network_cidr: str, kebutuhan_host: list[int]) -> list[dict]:
+    if not network_cidr or "/" not in network_cidr:
+        raise ValueError("Network CIDR tidak valid (contoh: 192.168.1.0/24).")
+    ip_str, prefix_str = network_cidr.split("/", 1)
+    try:
+        base_prefix = int(prefix_str)
+    except ValueError:
+        raise ValueError("Prefix CIDR harus integer.")
+
+    if base_prefix < 0 or base_prefix > 30:
+        raise ValueError("Prefix network induk untuk VLSM harus antara 0 dan 30.")
+
+    base_ip_int = ip_to_int(ip_str)
+    base_mask_int = 0 if base_prefix == 0 else ((0xFFFFFFFF << (32 - base_prefix)) & 0xFFFFFFFF)
+    major_network_int = base_ip_int & base_mask_int
+    major_broadcast_int = major_network_int | ((~base_mask_int) & 0xFFFFFFFF)
+
+    if not kebutuhan_host or len(kebutuhan_host) == 0:
+        raise ValueError("Daftar kebutuhan host tidak boleh kosong.")
+
+    for h in kebutuhan_host:
+        if not isinstance(h, int) or h <= 0:
+            raise ValueError(f"Kebutuhan host harus integer positif, didapat: {h}")
+
+    # Urutkan kebutuhan host dari yang terbesar
+    kebutuhan_sorted = sorted(kebutuhan_host, reverse=True)
+    hasil = []
+    current_ip_int = major_network_int
+
+    for hosts in kebutuhan_sorted:
+        # Hitung bit host yang dibutuhkan: 2^n - 2 >= hosts (kecuali hosts == 2 -> /30 atau /31)
+        needed_bits = math.ceil(math.log2(hosts + 2))
+        needed_bits = max(2, needed_bits)
+        prefix = 32 - needed_bits
+        block_size = 2 ** needed_bits
+
+        if current_ip_int + block_size - 1 > major_broadcast_int:
+            raise ValueError("Kapasitas network induk tidak mencukupi untuk alokasi VLSM.")
+
+        sub_net_int = current_ip_int
+        sub_bcast_int = current_ip_int + block_size - 1
+        sub_first_int = sub_net_int + 1
+        sub_last_int = sub_bcast_int - 1
+
+        mask_int = (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF
+
+        hasil.append({
+            "kebutuhan_host": hosts,
+            "usable_hosts": block_size - 2,
+            "prefix": prefix,
+            "network_cidr": f"{int_to_ip(sub_net_int)}/{prefix}",
+            "network": int_to_ip(sub_net_int),
+            "broadcast": int_to_ip(sub_bcast_int),
+            "first_host": int_to_ip(sub_first_int),
+            "last_host": int_to_ip(sub_last_int),
+            "subnet_mask": int_to_ip(mask_int),
+        })
+
+        current_ip_int += block_size
+
+    return hasil
 
 
 @app.get("/")
@@ -156,5 +225,27 @@ def api_subnet(ip: str = Query(default=""), prefix: int = Query(default=None)):
         )
     try:
         return hitung_subnet(ip, prefix)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/vlsm")
+async def api_vlsm(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="JSON request body tidak valid.")
+
+    network = body.get("network")
+    kebutuhan_host = body.get("kebutuhan_host")
+
+    if not network or kebutuhan_host is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Field 'network' dan 'kebutuhan_host' wajib diisi.",
+        )
+
+    try:
+        return alokasi_vlsm(network, kebutuhan_host)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

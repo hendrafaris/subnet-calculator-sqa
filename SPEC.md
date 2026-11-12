@@ -58,7 +58,7 @@ Menghitung informasi subnet berdasarkan parameter query.
 }
 ```
 
-**Response error `422 Unprocessable Entity`:** input tidak valid.
+**Response error `400 Bad Request`:** input tidak valid (format IP salah, prefix < 0 atau > 32, parameter kosong).
 
 ---
 
@@ -68,8 +68,8 @@ Menghitung informasi subnet berdasarkan parameter query.
 |---|---|
 | Format IP | 4 oktet desimal, masing-masing 0–255 |
 | Prefix | Integer 0 ≤ prefix ≤ 32 |
-| IP kosong | Harus ditolak (422) |
-| Prefix kosong | Harus ditolak (422) |
+| IP kosong | Harus ditolak (400) |
+| Prefix kosong | Harus ditolak (400) |
 
 ---
 
@@ -87,9 +87,9 @@ lulus jika seluruh assertion benar dan coverage ≥ 80 %.
 | T-05 | `10.1.1.0` | `31` | `10.1.1.0` | `10.1.1.1` | `10.1.1.0` | `10.1.1.1` | `2` | Point-to-point /31 (RFC 3021) |
 | T-06 | `10.1.1.5` | `32` | `10.1.1.5` | `10.1.1.5` | `10.1.1.5` | `10.1.1.5` | `1` | Host tunggal /32 |
 | T-07 | `0.0.0.0` | `0` | `0.0.0.0` | `255.255.255.255` | `0.0.0.1` | `255.255.255.254` | `4294967294` | Default route |
-| T-08 | `999.999.999.999` | `24` | — | — | — | — | — | IP tidak valid → 422 |
-| T-09 | `192.168.1.0` | `33` | — | — | — | — | — | Prefix > 32 → 422 |
-| T-10 | `192.168.1.0` | `-1` | — | — | — | — | — | Prefix negatif → 422 |
+| T-08 | `999.999.999.999` | `24` | — | — | — | — | — | IP tidak valid → 400 |
+| T-09 | `192.168.1.0` | `33` | — | — | — | — | — | Prefix > 32 → 400 |
+| T-10 | `192.168.1.0` | `-1` | — | — | — | — | — | Prefix negatif → 400 |
 
 ---
 

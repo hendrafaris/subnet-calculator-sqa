@@ -1,5 +1,5 @@
 /* ============================================================
-   NetCalc — Subnet Calculator Logic
+   NetCalc — Subnet Calculator Logic (Connected to FastAPI)
    ============================================================ */
 
 'use strict';
@@ -8,7 +8,6 @@
 
 /**
  * Validate an IPv4 address string.
- * Returns true if valid.
  */
 function isValidIP(ip) {
   const parts = ip.trim().split('.');
@@ -29,19 +28,6 @@ function ipToInt(ip) {
 }
 
 /**
- * Convert a 32-bit unsigned integer to IPv4 dotted-decimal string.
- */
-function intToIp(n) {
-  n = n >>> 0;
-  return [
-    (n >>> 24) & 0xff,
-    (n >>> 16) & 0xff,
-    (n >>>  8) & 0xff,
-     n         & 0xff
-  ].join('.');
-}
-
-/**
  * Convert a 32-bit integer to 32-bit binary string (no dots).
  */
 function intToBin(n) {
@@ -52,39 +38,7 @@ function intToBin(n) {
  * Split a 32-bit binary string into dotted octets.
  */
 function binToDotted(b) {
-  return [b.slice(0,8), b.slice(8,16), b.slice(16,24), b.slice(24,32)].join('.');
-}
-
-/**
- * Determine the IP class (A, B, C, D, E).
- */
-function getClass(ip) {
-  const first = Number(ip.trim().split('.')[0]);
-  if (first >= 1   && first <= 126) return 'A';
-  if (first === 127)                return 'Loopback';
-  if (first >= 128 && first <= 191) return 'B';
-  if (first >= 192 && first <= 223) return 'C';
-  if (first >= 224 && first <= 239) return 'D (Multicast)';
-  if (first >= 240)                 return 'E (Reserved)';
-  return '—';
-}
-
-/**
- * Determine if the IP is private or public.
- */
-function getType(ipInt) {
-  const oct = [
-    (ipInt >>> 24) & 0xff,
-    (ipInt >>> 16) & 0xff,
-    (ipInt >>>  8) & 0xff,
-     ipInt         & 0xff
-  ];
-  if (oct[0] === 10)                                      return 'Privat';
-  if (oct[0] === 172 && oct[1] >= 16 && oct[1] <= 31)    return 'Privat';
-  if (oct[0] === 192 && oct[1] === 168)                   return 'Privat';
-  if (oct[0] === 127)                                     return 'Loopback';
-  if (oct[0] === 169 && oct[1] === 254)                   return 'Link-Local';
-  return 'Publik';
+  return [b.slice(0, 8), b.slice(8, 16), b.slice(16, 24), b.slice(24, 32)].join('.');
 }
 
 /**
@@ -94,91 +48,85 @@ function formatNumber(n) {
   return n.toLocaleString('id-ID');
 }
 
-// ── Main Calculation ─────────────────────────────────────────
+// ── Main Calculation via API ─────────────────────────────────
 
-function calculate() {
-  const ipRaw    = document.getElementById('ip-input').value.trim();
+async function calculate() {
+  const ipRaw = document.getElementById('ip-input').value.trim();
   const prefixRaw = document.getElementById('prefix-input').value.trim();
+  const errorBox = document.getElementById('error-box');
+  const resultsEl = document.getElementById('results');
 
   // Clear previous state
   clearErrors();
-  document.getElementById('error-box').classList.add('hidden');
+  errorBox.classList.add('hidden');
+  errorBox.textContent = '';
 
-  let hasError = false;
+  let clientHasError = false;
 
-  // Validate IP
+  // Client-side quick check
   if (!ipRaw) {
     setFieldError('ip-input', 'ip-hint', 'Alamat IP tidak boleh kosong.');
-    hasError = true;
-  } else if (!isValidIP(ipRaw)) {
-    setFieldError('ip-input', 'ip-hint', 'Format IP tidak valid (contoh: 192.168.1.0).');
-    hasError = true;
+    clientHasError = true;
   }
-
-  // Validate prefix
-  const prefix = parseInt(prefixRaw, 10);
   if (prefixRaw === '') {
     setFieldError('prefix-input', 'prefix-hint', 'Prefix tidak boleh kosong.');
-    hasError = true;
-  } else if (isNaN(prefix) || prefix < 0 || prefix > 32) {
-    setFieldError('prefix-input', 'prefix-hint', 'Prefix harus antara 0 – 32.');
-    hasError = true;
+    clientHasError = true;
   }
 
-  if (hasError) return;
+  if (clientHasError) return;
 
-  // ── Compute ───────────────────────────────────────────────
+  try {
+    const response = await fetch(`/api/subnet?ip=${encodeURIComponent(ipRaw)}&prefix=${encodeURIComponent(prefixRaw)}`);
+    const data = await response.json();
 
-  const ipInt      = ipToInt(ipRaw);
-  const maskInt    = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
-  const wildcardInt = (~maskInt) >>> 0;
-  const networkInt  = (ipInt & maskInt) >>> 0;
-  const broadcastInt = (networkInt | wildcardInt) >>> 0;
+    if (!response.ok) {
+      // Tampilkan pesan error dari field detail
+      let message = 'Terjadi kesalahan validasi.';
+      if (typeof data.detail === 'string') {
+        message = data.detail;
+      } else if (Array.isArray(data.detail)) {
+        message = data.detail.map(d => d.msg || d).join(', ');
+      }
+      errorBox.textContent = message;
+      errorBox.classList.remove('hidden');
+      resultsEl.classList.add('hidden');
+      return;
+    }
 
-  const totalHosts = Math.pow(2, 32 - prefix);  // includes network + broadcast
-  const usableHosts = prefix >= 31 ? (prefix === 31 ? 2 : 1) : Math.max(0, totalHosts - 2);
+    // Isi tampilan dari data API
+    document.getElementById('res-class').textContent = data.ip_class || '—';
+    document.getElementById('res-type').textContent = data.ip_type || '—';
+    document.getElementById('res-mask').textContent = data.subnet_mask || '—';
+    document.getElementById('res-wildcard').textContent = data.wildcard || '—';
 
-  let firstHostInt, lastHostInt;
-  if (prefix === 32) {
-    firstHostInt = networkInt;
-    lastHostInt  = networkInt;
-  } else if (prefix === 31) {
-    firstHostInt = networkInt;
-    lastHostInt  = broadcastInt;
-  } else {
-    firstHostInt = (networkInt + 1) >>> 0;
-    lastHostInt  = (broadcastInt - 1) >>> 0;
+    document.getElementById('res-network').textContent = data.network_address || '—';
+    document.getElementById('res-broadcast').textContent = data.broadcast_address || '—';
+
+    const netInt = ipToInt(data.network_address);
+    const bcastInt = ipToInt(data.broadcast_address);
+    document.getElementById('res-network-bin').textContent = binToDotted(intToBin(netInt));
+    document.getElementById('res-broadcast-bin').textContent = binToDotted(intToBin(bcastInt));
+
+    document.getElementById('res-first').textContent = data.first_host || '—';
+    document.getElementById('res-last').textContent = data.last_host || '—';
+
+    document.getElementById('res-hosts').textContent = formatNumber(data.usable_hosts);
+    document.getElementById('res-hosts-sub').textContent =
+      data.prefix === 32 ? 'host tunggal (/32)' :
+      data.prefix === 31 ? 'host (point-to-point /31)' :
+      'host yang dapat digunakan';
+
+    // Visualisasi biner
+    renderBinary(netInt, data.prefix);
+
+    // Tampilkan bagian hasil
+    resultsEl.classList.remove('hidden');
+    resultsEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (err) {
+    errorBox.textContent = 'Gagal terhubung ke server API: ' + err.message;
+    errorBox.classList.remove('hidden');
+    resultsEl.classList.add('hidden');
   }
-
-  // ── Fill UI ───────────────────────────────────────────────
-
-  document.getElementById('res-class').textContent    = getClass(ipRaw);
-  document.getElementById('res-type').textContent     = getType(ipInt);
-  document.getElementById('res-mask').textContent     = intToIp(maskInt);
-  document.getElementById('res-wildcard').textContent = intToIp(wildcardInt);
-
-  document.getElementById('res-network').textContent   = intToIp(networkInt);
-  document.getElementById('res-broadcast').textContent = intToIp(broadcastInt);
-
-  document.getElementById('res-network-bin').textContent   = binToDotted(intToBin(networkInt));
-  document.getElementById('res-broadcast-bin').textContent = binToDotted(intToBin(broadcastInt));
-
-  document.getElementById('res-first').textContent = intToIp(firstHostInt);
-  document.getElementById('res-last').textContent  = intToIp(lastHostInt);
-
-  document.getElementById('res-hosts').textContent = formatNumber(usableHosts);
-  document.getElementById('res-hosts-sub').textContent =
-    prefix === 32 ? 'host tunggal (/32)' :
-    prefix === 31 ? 'host (point-to-point /31)' :
-    'host yang dapat digunakan';
-
-  // Binary visualization
-  renderBinary(networkInt, prefix);
-
-  // Show results
-  const resultsEl = document.getElementById('results');
-  resultsEl.classList.remove('hidden');
-  resultsEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // ── Binary Visualization ─────────────────────────────────────
@@ -202,8 +150,6 @@ function renderBinary(networkInt, prefix) {
     bit.title = i < prefix
       ? `Bit network ke-${i + 1}`
       : `Bit host ke-${i - prefix + 1}`;
-    // Animate in with delay
-    bit.style.animationDelay = `${i * 15}ms`;
     bit.style.opacity = '0';
     bit.style.animation = `bitIn .3s ease ${i * 12}ms forwards`;
     container.appendChild(bit);
@@ -227,7 +173,7 @@ function renderBinary(networkInt, prefix) {
 
 function setFieldError(inputId, hintId, message) {
   const input = document.getElementById(inputId);
-  const hint  = document.getElementById(hintId);
+  const hint = document.getElementById(hintId);
   input.classList.add('error');
   if (hint) hint.textContent = message;
 }
@@ -272,15 +218,15 @@ document.addEventListener('keydown', function (e) {
 
 function copyResults() {
   const fields = [
-    ['Network Address',  document.getElementById('res-network')?.textContent],
-    ['Broadcast Address',document.getElementById('res-broadcast')?.textContent],
-    ['Subnet Mask',      document.getElementById('res-mask')?.textContent],
-    ['Wildcard',         document.getElementById('res-wildcard')?.textContent],
-    ['Host Pertama',     document.getElementById('res-first')?.textContent],
-    ['Host Terakhir',    document.getElementById('res-last')?.textContent],
-    ['Jumlah Host',      document.getElementById('res-hosts')?.textContent],
-    ['Kelas',            document.getElementById('res-class')?.textContent],
-    ['Tipe',             document.getElementById('res-type')?.textContent],
+    ['Network Address', document.getElementById('res-network')?.textContent],
+    ['Broadcast Address', document.getElementById('res-broadcast')?.textContent],
+    ['Subnet Mask', document.getElementById('res-mask')?.textContent],
+    ['Wildcard', document.getElementById('res-wildcard')?.textContent],
+    ['Host Pertama', document.getElementById('res-first')?.textContent],
+    ['Host Terakhir', document.getElementById('res-last')?.textContent],
+    ['Jumlah Host', document.getElementById('res-hosts')?.textContent],
+    ['Kelas', document.getElementById('res-class')?.textContent],
+    ['Tipe', document.getElementById('res-type')?.textContent],
   ];
 
   const text = fields.map(([label, val]) => `${label}: ${val}`).join('\n');
@@ -303,10 +249,10 @@ function copyResults() {
         Salin`;
     }, 2500);
   }).catch(() => {
-    // Fallback for older browsers
     const ta = document.createElement('textarea');
     ta.value = text;
-    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
     document.body.appendChild(ta);
     ta.select();
     document.execCommand('copy');
@@ -316,8 +262,9 @@ function copyResults() {
 
 // ── Auto-fill example on load ─────────────────────────────────
 window.addEventListener('load', () => {
-  document.getElementById('ip-input').value    = '192.168.1.0';
+  document.getElementById('ip-input').value = '192.168.1.0';
   document.getElementById('prefix-input').value = '24';
   document.getElementById('ip-input').classList.add('valid');
   document.getElementById('prefix-input').classList.add('valid');
+  calculate();
 });

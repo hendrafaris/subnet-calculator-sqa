@@ -44,3 +44,19 @@ uv run python scripts/smoke_test.py http://127.0.0.1:8000
 ```bash
 docker rm -f subnet-app
 ```
+
+## Deploy
+
+Aplikasi ini berjalan di Vercel (produksi):
+
+https://subnet-calculator-sqa-nu.vercel.app
+
+Vercel men-deploy ulang otomatis setiap ada push atau merge ke branch `main`.
+
+### Smoke test produksi
+
+```
+uv run python scripts/smoke_test.py https://subnet-calculator-sqa-nu.vercel.app
+```
+
+Hasil yang diharapkan: `Ringkasan: 4 lulus, 0 gagal`.

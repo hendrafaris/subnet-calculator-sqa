@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Subnet Calculator — NetCalc</title>
+  <meta name="description" content="Kalkulator subnet berbasis web. Masukkan IP dan prefix untuk menghitung network address, broadcast address, range host, dan jumlah host." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Animated Background -->
+  <div class="bg-grid"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+
+  <main class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <svg class="logo-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="24" cy="24" r="22" stroke="url(#grad)" stroke-width="2.5"/>
+          <circle cx="24" cy="12" r="4" fill="url(#grad)"/>
+          <circle cx="10" cy="34" r="4" fill="url(#grad)"/>
+          <circle cx="38" cy="34" r="4" fill="url(#grad)"/>
+          <line x1="24" y1="16" x2="10" y2="30" stroke="url(#grad)" stroke-width="1.5"/>
+          <line x1="24" y1="16" x2="38" y2="30" stroke="url(#grad)" stroke-width="1.5"/>
+          <line x1="14" y1="34" x2="34" y2="34" stroke="url(#grad)" stroke-width="1.5"/>
+          <defs>
+            <linearGradient id="grad" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#6366f1"/>
+              <stop offset="100%" stop-color="#06b6d4"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <span class="logo-text">Net<span class="accent">Calc</span></span>
+      </div>
+      <div class="header-badge">Subnet Calculator</div>
+    </header>
+
+    <!-- Input Card -->
+    <section class="card input-card" aria-label="Input Jaringan">
+      <div class="card-header">
+        <h1 class="card-title">Hitung Subnet</h1>
+        <p class="card-subtitle">Masukkan alamat IP dan prefix untuk menghitung informasi subnet</p>
+      </div>
+
+      <div class="input-group">
+        <div class="field">
+          <label for="ip-input" class="field-label">
+            <span class="field-icon">🌐</span> Alamat IP
+          </label>
+          <input
+            id="ip-input"
+            class="field-input"
+            type="text"
+            placeholder="192.168.1.0"
+            maxlength="18"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <span class="field-hint" id="ip-hint"></span>
+        </div>
+
+        <div class="field-divider">
+          <span>/</span>
+        </div>
+
+        <div class="field field-prefix">
+          <label for="prefix-input" class="field-label">
+            <span class="field-icon">📐</span> Prefix
+          </label>
+          <input
+            id="prefix-input"
+            class="field-input"
+            type="number"
+            placeholder="24"
+            min="0"
+            max="32"
+          />
+          <span class="field-hint" id="prefix-hint"></span>
+        </div>
+      </div>
+
+      <button id="calc-btn" class="calc-btn" onclick="calculate()">
+        <span class="btn-text">Hitung Sekarang</span>
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </button>
+
+      <div id="error-box" class="error-box hidden" role="alert"></div>
+    </section>
+
+    <!-- Results Section -->
+    <section id="results" class="results hidden" aria-label="Hasil Kalkulasi">
+      <!-- Summary Bar -->
+      <div class="summary-bar">
+        <div class="summary-item">
+          <span class="summary-label">Kelas</span>
+          <span class="summary-value" id="res-class">—</span>
+        </div>
+        <div class="summary-divider"></div>
+        <div class="summary-item">
+          <span class="summary-label">Tipe</span>
+          <span class="summary-value" id="res-type">—</span>
+        </div>
+        <div class="summary-divider"></div>
+        <div class="summary-item">
+          <span class="summary-label">Subnet Mask</span>
+          <span class="summary-value mono" id="res-mask">—</span>
+        </div>
+        <div class="summary-divider"></div>
+        <div class="summary-item">
+          <span class="summary-label">Wildcard</span>
+          <span class="summary-value mono" id="res-wildcard">—</span>
+        </div>
+      </div>
+
+      <!-- Main Result Cards -->
+      <div class="result-grid">
+        <div class="result-card" id="card-network">
+          <div class="result-icon">🏠</div>
+          <div class="result-label">Network Address</div>
+          <div class="result-value mono" id="res-network">—</div>
+          <div class="result-binary mono small" id="res-network-bin">—</div>
+        </div>
+
+        <div class="result-card" id="card-broadcast">
+          <div class="result-icon">📡</div>
+          <div class="result-label">Broadcast Address</div>
+          <div class="result-value mono" id="res-broadcast">—</div>
+          <div class="result-binary mono small" id="res-broadcast-bin">—</div>
+        </div>
+
+        <div class="result-card result-card-wide" id="card-range">
+          <div class="result-icon">↔️</div>
+          <div class="result-label">Range Host</div>
+          <div class="result-range">
+            <div class="range-item">
+              <div class="range-label">Host Pertama</div>
+              <div class="result-value mono" id="res-first">—</div>
+            </div>
+            <div class="range-arrow">→</div>
+            <div class="range-item">
+              <div class="range-label">Host Terakhir</div>
+              <div class="result-value mono" id="res-last">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="result-card result-card-highlight" id="card-hosts">
+          <div class="result-icon">🖥️</div>
+          <div class="result-label">Jumlah Host</div>
+          <div class="result-value mono large" id="res-hosts">—</div>
+          <div class="result-subtext" id="res-hosts-sub">host yang dapat digunakan</div>
+        </div>
+      </div>
+
+      <!-- Binary Visualization -->
+      <div class="binary-card">
+        <div class="binary-card-header">
+          <span class="binary-title">Visualisasi Biner</span>
+          <span class="binary-subtitle">Bit network (biru) vs Bit host (abu-abu)</span>
+        </div>
+        <div class="binary-visual" id="binary-visual"></div>
+        <div class="binary-legend">
+          <span class="legend-item"><span class="legend-dot net-dot"></span> Network Bit</span>
+          <span class="legend-item"><span class="legend-dot host-dot"></span> Host Bit</span>
+        </div>
+      </div>
+
+      <!-- Copy Section -->
+      <div class="copy-bar">
+        <span class="copy-label">Salin semua hasil:</span>
+        <button class="copy-btn" id="copy-btn" onclick="copyResults()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          Salin
+        </button>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>NetCalc &mdash; Subnet Calculator &copy; 2024</p>
+    </footer>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
